@@ -8,6 +8,7 @@
 #
 library(tidyverse)
 library(shiny)
+theme_set(theme_bw())
 
 #--- UI definition -------------------------------------------------------------
 # Define UI for application that draws a histogram
@@ -21,8 +22,18 @@ ui <- navbarPage(
             column( 
                 width = 12,
                 wellPanel(
-                    h3("A Lady Tasting Tea"),
-                    "Problem description, link to wikipedia, etc."
+                    a(h3("A Lady Tasting Tea"), href = "https://en.wikipedia.org/wiki/Lady_tasting_tea"),
+                    fluidRow(
+                    column(
+                      width = 8,
+                      p("Sir Ronald Fisher once had a conversation with a woman who claimed to be able to tell whether the tea or milk was added first to a cup. Fisher, being interested in probability, decided to test this woman's claim empirically by presenting her with 8 randomly ordered cups of tea - 4 with milk added first, and 4 with tea added first. The women was then supposed to select 4 cups prepared with one method, but is allowed to directly compare each cup (e.g. tasting each cup sequentially, or in pairs)."),
+                      p("The lady identified each cup correctly. Do we believe that this could happen by random chance alone?")
+                    ),
+                    column(
+                      width = 4,
+                      img(src="tea-tasting-fuzzballs.png", width = "100%")
+                    )
+                    )
                 )
             )
         ),
@@ -55,7 +66,16 @@ ui <- navbarPage(
                 width = 12,
                 wellPanel(
                     h3("Setting up the problem"),
-                    "Problem description, link to wikipedia, etc."
+                    fluidRow(
+                      column(
+                        width = 8,
+                        p("When we use simulations to examine a hypothesis, we create a distribution that (over many, many simulations) begins to look like our theoretical distribution. This means that simulation-based tests and theory-based tests should come to similar conclusions most of the time. In fact, theory-based tests have some additional assumptions that simulation-based tests do not; as a result, simulation-based tests work even when theory-based tests do not in many cases.")
+                      ),
+                      column(
+                        width = 4,
+                        img(src="SimulationTheoryCartoon.png", width = "100%")
+                      )
+                    )
                 )
             )
         ),
@@ -116,7 +136,17 @@ ui <- navbarPage(
                 width = 12,
                 wellPanel(
                     h3("Setting up the problem"),
-                    "Problem description, link to wikipedia, etc."
+                    # section below allows in-line LaTeX via $ in mathjax.
+                    tags$div(HTML("<script>
+                      MathJax.Hub.Config({
+                      tex2jax: {inlineMath: [['$','$']]}
+                      });</script>
+                ")),
+                    withMathJax(
+                      p("In one-sample tests of categorical variables, we typically want to know whether the proportion of successes (the quantity we're interested in) is equal to a specific value (that is, $\\pi = 0.5$ or something of that sort). Our population parameter, $\\pi$, represents the unknown population quantity, and our sample statistic, $\\hat p$, represents what we know about the value of $\\pi$."),
+                      p("In these tests, our null hypothesis is that $\\pi = a$, where a is chosen relative to the problem. Often, $a$ is equal to 0.5, because usually that corresponds to random chance."),
+                      p("When simulating these experiments, we will often use a coin flip (for random chance) or a spinner (for other values of $\\pi$) to generate data.")
+                    )
                 )
             )
         ),
@@ -161,7 +191,7 @@ ui <- navbarPage(
                 width = 12,
                 wellPanel(
                     h3("Setting up the problem"),
-                    "Problem description, link to wikipedia, etc."
+                    p("One-sample continuous variable experiments cannot be simulated because we do not usually know the characteristics of the population we're trying to predict from. Instead, we use theory-based tests for continuous one-sample data.")
                 )
             )
         ),
@@ -183,7 +213,7 @@ ui <- navbarPage(
             column(
                 width = 9, 
                 h3("Theoretical Results"),
-                helpText("Note that with continuous variables, we cannot resample data without knowledge of the underlying distribution or much larger datasets (e.g. a census)."),
+                # helpText("Note that with continuous variables, we cannot resample data without knowledge of the underlying distribution or much larger datasets (e.g. a census)."),
                 plotOutput("octs_theory_plot"),
                 textOutput("octs_theory_text")
             )
@@ -191,13 +221,13 @@ ui <- navbarPage(
     ),
     tabPanel(
         title = "Categorical + Continuous Variables",
-        h2("Studies with Categorical + Continuous Variables"),
+        h2("Studies with one Categorical and one Continuous Variable"),
         fluidRow(
             column( 
                 width = 12,
                 wellPanel(
                     h3("Setting up the problem"),
-                    "Problem description, link to wikipedia, etc."
+                    p("In a two-sample test, there are two groups of participants which are assigned different treatments. The goal is to see how the two treatments differ. Because there are two groups, the mathematical formula for calculating the standardized statistic is slightly more complicated (because the variability of $\\overline{X}_A - \\overline{X}_B$ is a bit more complicated), but in the end that statistic is compared to a similar reference distribution.")
                 )
             )
         ),
@@ -226,8 +256,8 @@ ui <- navbarPage(
                     ),
                     br(),
                     withMathJax(
-                        helpText("The statistic calculated will be \\(\\overline x_1 - \\overline x_2\\)"),
-                        helpText("We will use a null hypothesis of \\(\\mu_1 - \\mu_2 = 0\\)")),
+                        helpText("The statistic calculated will be $\\overline x_1 - \\overline x_2$"),
+                        helpText("We will use a null hypothesis of $\\mu_1 - \\mu_2 = 0$")),
                     numericInput("tg.numberSims", label = "# Simulations to run", 
                                  value = 100, min = 10, max = 1000)
                 )
@@ -266,7 +296,7 @@ server <- function(input, output) {
     output$tea_plot <- renderPlot({
         ggplot(data = tea_sim(), aes(x = x, fill = fill)) + geom_bar(color = "black") + 
             scale_fill_manual("Compared to\nObserved Value", 
-                              values = c("Not as extreme" = "white", "As extreme" = "red")) +
+                              values = c("Not as extreme" = "white", "As extreme" = "#6673fe")) +
             xlab("# Correct Cups Identified") + ylab("# Simulations") + 
             ggtitle("Results of Tea Test Under Random Chance") + 
             theme(legend.position = c(1, 1), legend.justification = c(1,1), legend.background = element_rect(fill = "transparent", color = "black"))
@@ -326,11 +356,23 @@ server <- function(input, output) {
     output$dists_sim_plot <- renderPlot({
         validate(need(nrow(dists_sim_res()) > 0, "Data simulation did not succeed"))
         validate(need(nrow(dists_res()) > 0, "Function identification did not succeed"))
-        
+        domain.lim <- max(c(1.5*abs(input$dist.mean), 
+                            1.5*abs(input$dist.observed), 
+                            abs(dists_sim_res()$x)))
+        domain <- if ( input$dname %in% c('z', 't')) {
+          c(-domain.lim, domain.lim)
+        } else {
+          c(0, domain.lim)
+        }
         ggplot(data = dists_sim_res(), aes(x = x, fill = extreme)) + 
-            geom_histogram(color = "black") + 
+          xlim(domain) + 
+          stat_function(fun = function(...) input$dists.n * dists_res()$densfun[[1]](...), 
+                        args = args, geom = "area", 
+                        color = "black", fill = "white"
+          ) + 
+            geom_histogram(color = "black", boundary = input$dist.observed) + 
             scale_fill_manual("Compared to\nObserved Value", 
-                              values = c("Not as extreme" = "white", "As extreme" = "red")) +
+                              values = c("Not as extreme" = "white", "As extreme" = "#f29db1")) +
             ylab("# Simulations") +
             ggtitle(sprintf("Simulated %s Values", dists_res()$name[[1]])) +
             theme(legend.position = c(1, 1), legend.justification = c(1,1), 
@@ -367,7 +409,7 @@ server <- function(input, output) {
                           ) + 
             stat_function(fun = dists_res()$densfun[[1]], args = args, 
                           xlim = c(input$dist.observed, max(domain)), geom = "area",
-                          color = "black", fill = "red"
+                          color = "black", fill = "#f29db1"
                           ) + 
             scale_fill_discrete("Compared to\nObserved Value") +
             ylab("Density") +
