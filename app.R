@@ -9,7 +9,7 @@
 library(tidyverse)
 library(shiny)
 theme_set(theme_bw())
-
+data(women)
 #--- UI definition -------------------------------------------------------------
 # Define UI for application that draws a histogram
 ui <- navbarPage(
@@ -280,6 +280,73 @@ ui <- navbarPage(
                 )
             )
         )
+    ),
+    tabPanel(
+      title = "Two Continuous Variables",
+      h2("Studies with two Continuous Variable"),
+      fluidRow(
+        column( 
+          width = 12,
+          wellPanel(
+            h3("Setting up the problem"),
+            withMathJax(
+              p("When we have data that consists of two continuous variables, we generally use linear regression to fit a regression line to the data. This line minimizes the errors in $y$, and is sometimes called the least squares regression line."),
+              p("The regression line, $\\hat{y} = a x + b$, consists of a slope and an intercept. If there is no linear relationship between $x$ and $y$, then we would expect $a = 0$."),
+              p("We can use hypothesis testing to assess whether the value of $a$ is likely to have occurred by random chance if there is no relationship between $x$ and $y$ using a hypothesis test just like we used in previous sections.")
+            )
+          )
+        )
+      ),
+      fluidRow(
+        column(
+          width = 3, 
+          wellPanel(
+            h3("Set your observed values and simulation parameters"),
+            fluidRow(
+              column(
+                width = 6, 
+                textAreaInput("tcx", label = "Variable 1 data", 
+                              value = paste(women[,2], 
+                                            collapse = "\n"),
+                              height = "200px"),
+                uiOutput("tcxstats")
+              ),
+              column(
+                width = 6, 
+                textAreaInput("tcy", label = "Variable 2 data", 
+                              value = paste(women[,1], 
+                                            collapse = "\n"),
+                              height = "200px"),
+                uiOutput("tcystats")
+              )
+            ),
+            br(),
+            plotOutput("tcplot"),
+            withMathJax(
+              helpText("The statistic calculated will be the slope of the line, $a$"),
+              helpText("We will use a null hypothesis of $a = 0$")),
+            numericInput("tc.numberSims", label = "# Simulations to run", 
+                         value = 100, min = 10, max = 1000)
+          )
+        ),
+        column(
+          width = 9,
+          fluidRow(
+            column(
+              width = 6,
+              h3("Simulation Results"),
+              plotOutput("tc_sim_plot"),
+              uiOutput("tc_sim_text")
+            ),
+            column(
+              width = 6,
+              h3("Theoretical Results"),
+              plotOutput("tc_theory_plot"),
+              verbatimTextOutput("tc_theory_text")
+            )
+          )
+        )
+      )
     )
 )
 #--- Server definition ---------------------------------------------------------
@@ -657,6 +724,125 @@ server <- function(input, output) {
         ttest <- t.test(x ~ group, data = tg_data())
         
         print(ttest)
+    })
+    
+    tc_data <- reactive({
+      xr <- str_split(input$tcx, "\\s", simplify = T) %>% as.numeric()
+      yr <- str_split(input$tcy, "\\s", simplify = T) %>% as.numeric()
+      tibble(
+        x = xr,
+        y = yr
+      )
+    })
+    
+    shuffle_tc <- function(data) {
+      data %>%
+        mutate(y = sample(y, length(y), replace = F))
+    }
+    
+    summarize_tc <- function(data) {
+      lr <- lm(y ~ x, data = data)
+      lr$coefficients[2]
+    }
+    
+    tc_sim <- reactive({
+      actual_diff <- tc_data() %>%
+        summarize_tc()
+      
+      tibble(
+        diff = purrr::map_dbl(1:input$tc.numberSims, ~shuffle_tc(tc_data()) %>% summarize_tc()),
+        extreme = abs(diff) >= abs(actual_diff)
+      ) %>%
+        mutate(extreme = factor(extreme, levels = c(FALSE, TRUE), labels = c("Not as extreme", "As extreme")))
+    })
+    
+    output$tcxstats <- renderUI({
+      data <- tc_data()$x
+      sprintf("X Mean: %0.2f<br/>X SD: %0.2f<br/>X N: %d",
+              mean(data), sd(data), length(data)) %>% HTML()
+    })
+    
+    output$tcystats <- renderUI({
+      data <- tc_data()$x
+      sprintf("Y Mean: %0.2f<br/>Y SD: %0.2f<br/>Y N: %d",
+              mean(data), sd(data), length(data)) %>% HTML()
+    })
+    
+    output$tc_sim_plot <- renderPlot({
+      obs_stat <- tc_data() %>%
+        summarize_tc()
+      diff_lim <- max(c(obs_stat, tc_sim()$x))
+      
+      ggplot(data = tc_sim(), aes(x = diff, fill = extreme)) + 
+        xlim(1.2*c(-diff_lim, diff_lim)) +
+        geom_histogram(color = "black") + 
+        geom_vline(aes(xintercept = obs_stat)) + 
+        geom_vline(aes(xintercept = -obs_stat)) + 
+        scale_fill_manual("Compared to\nObserved Value",
+                          values = c("Not as extreme" = "white", "As extreme" = "red")) +
+        ylab("# Simulations") +
+        ggtitle("Simulated Successes") +
+        theme(legend.position = c(1, 1), legend.justification = c(1,1), 
+              legend.background = element_rect(fill = "transparent", 
+                                               color = "black"), 
+              axis.title.x = element_blank())
+      
+    })    
+    output$tc_sim_text <- renderUI({
+      obs_stat <- tc_data() %>%
+        summarize_tc()
+      
+      paste(
+        sprintf("Number of simulations with a difference of at least +/- %0.3f", 
+                obs_stat),
+        sprintf("Simulation P-value: %0.3f", mean(tc_sim()$extreme == "As extreme")),
+        sep = "<br/><br/>"
+      ) %>% HTML()
+    })
+    
+    output$tc_theory_plot <- renderPlot({
+      lreg <- lm(y ~ x, data = tc_data())
+      lregsum <- summary(lreg)
+      lims <- max(c(abs(lregsum$coefficients[2,3]) + 1, 4))
+      
+      ggplot() + 
+        xlim(c(-lims, lims)) +
+        stat_function(fun = dt, 
+                      args = c(df = lregsum$df[2]), geom = "area", 
+                      color = "black", fill = "white"
+        ) + 
+        stat_function(fun = dt, args = c(df = lregsum$df[2]), 
+                      xlim = c(-lims, -abs(lregsum$coefficients[2,3])), geom = "area",
+                      color = "black", fill = "red"
+        ) + 
+        stat_function(fun = dt, args = c(df = lregsum$df[2]), 
+                      xlim = c(abs(lregsum$coefficients[2,3]), lims), geom = "area",
+                      color = "black", fill = "red"
+        ) + 
+        geom_vline(aes(xintercept = lregsum$coefficients[2,3])) + 
+        geom_vline(aes(xintercept = -lregsum$coefficients[2,3])) + 
+        ylab("Density") +
+        ggtitle("Theoretical T-Distribution") +
+        theme(legend.position = c(1, 1), legend.justification = c(1,1), 
+              legend.background = element_rect(fill = "transparent", 
+                                               color = "black"),
+              axis.title.x = element_blank())
+      
+    })
+    
+    output$tc_theory_text <- renderPrint({
+      lreg <- lm(y ~ x, data = tc_data())
+      lregsum <- summary(lreg)
+      print(lregsum)
+    })
+    
+    output$tcplot <- renderPlot({
+      lreg <- lm(y ~ x, data = tc_data())
+      ggplot(aes(x = x, y =  y), data = tc_data()) + 
+        geom_point() + 
+        geom_smooth(method = "lm") + 
+        geom_text(aes(x = -Inf, y = Inf, label = sprintf("y = %0.2f + %0.2f x", lreg$coefficients[1], lreg$coefficients[2])),
+                  hjust = -0.25, vjust = 2)
     })
     
 }
